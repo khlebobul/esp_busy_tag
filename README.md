@@ -13,6 +13,17 @@ Open-source ESP32-based alternative to Busy Tag, built for the Waveshare [ESP32-
 - **BOOT** button (GPIO0) cycles `FREE → BUSY → MEETING → FREE` (60 ms debounce)
 - Status set over USB serial, JSON Lines protocol
 
+## Enclosure
+
+The [ESP32 table dock](https://github.com/khlebobul/build123d_models/tree/main/esp32_table_dock) is included as a git submodule at `enclosure/esp32_table_dock/`. It contains the ready-to-print STL and the build123d source.
+
+After cloning, keep only this model in `enclosure/`:
+
+```sh
+git submodule update --init --recursive
+git -C enclosure sparse-checkout set esp32_table_dock
+```
+
 ## TUI
 
 ```sh
@@ -26,10 +37,9 @@ Interactive terminal UI. Keys:
 - `b` / `2` — Busy
 - `m` / `3` — Meeting
 - `r` — reconnect
-- `u` — firmware update (prompts for merged `.bin` path)
 - `q` / `Esc` — quit
 
-The app finds a device by sending `{"cmd":"info"}` to serial ports. Firmware update uses a local merged `.bin` image and an installed `esptool` executable.
+The app finds a device by sending `{"cmd":"info"}` to serial ports.
 
 ## Firmware
 
@@ -49,11 +59,3 @@ The first build downloads Waveshare's managed BSP component. The device appears 
 {"cmd":"get_state"}
 {"cmd":"info"}
 ```
-
-For firmware update, create one merged image (not `build/desk_display.bin`, which starts at `0x10000`):
-
-```sh
-idf.py merge-bin -o desk-display.bin
-```
-
-Choose `firmware/build/desk-display.bin` in the TUI (`u`).

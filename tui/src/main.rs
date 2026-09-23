@@ -4,12 +4,8 @@ use ratatui::widgets::Paragraph;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
-
-const BOARD: &str = "esp32s3";
 
 #[derive(Clone, Deserialize)]
 #[allow(dead_code)]
@@ -108,30 +104,14 @@ fn send_command(port: &str, command: &Value) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-fn flash_firmware(port: &str, firmware: &str) -> Result<(), String> {
-    if !Path::new(firmware).is_file() {
-        return Err(format!("No such file: {firmware}"));
-    }
-    let result = Command::new("esptool")
-        .args(["--chip", BOARD, "--port", port, "write_flash", "0x0", firmware])
-        .status()
-        .map_err(|e| format!("Could not run esptool: {e}"))?;
-    result
-        .success()
-        .then_some(())
-        .ok_or_else(|| format!("esptool exited with {result}"))
-}
-
 enum Command_ {
     Find,
     SetStatus(Status),
-    FlashFirmware(PathBuf),
 }
 
 enum UiEvent {
     Found(Option<Device>),
     StatusSent(Result<(), String>),
-    FirmwareDone(Result<(), String>),
 }
 
 fn worker(rx: Receiver<Command_>, out: Sender<UiEvent>) {
@@ -145,17 +125,13 @@ fn worker(rx: Receiver<Command_>, out: Sender<UiEvent>) {
             }
             Command_::SetStatus(status) => {
                 let res = match &device {
-                    Some(d) => send_command(&d.port, &json!({ "cmd": "status", "value": status.value() })),
+                    Some(d) => send_command(
+                        &d.port,
+                        &json!({ "cmd": "status", "value": status.value() }),
+                    ),
                     None => Err("Device not connected".into()),
                 };
                 UiEvent::StatusSent(res)
-            }
-            Command_::FlashFirmware(path) => {
-                let res = match &device {
-                    Some(d) => flash_firmware(&d.port, &path.to_string_lossy()),
-                    None => Err("Device not connected".into()),
-                };
-                UiEvent::FirmwareDone(res)
             }
         };
         if out.send(event).is_err() {
@@ -164,17 +140,11 @@ fn worker(rx: Receiver<Command_>, out: Sender<UiEvent>) {
     }
 }
 
-struct FirmwareInput {
-    editing: bool,
-    path: String,
-}
-
 struct App {
     device: Option<Device>,
     active: Status,
     pending: Option<Status>,
     notice: String,
-    firmware: FirmwareInput,
     quit: bool,
 }
 
@@ -218,7 +188,11 @@ fn draw(f: &mut Frame, app: &App) {
         Span::raw("   "),
         Span::styled(
             dot,
-            Style::default().fg(if connected { Color::Rgb(48, 209, 88) } else { Color::DarkGray }),
+            Style::default().fg(if connected {
+                Color::Rgb(48, 209, 88)
+            } else {
+                Color::DarkGray
+            }),
         ),
         Span::styled(
             if connected {
@@ -242,17 +216,26 @@ fn draw(f: &mut Frame, app: &App) {
     // Status options
     let spans: Vec<Span> = {
         let mut spans: Vec<Span> = Vec::new();
-        for (i, status) in [Status::Free, Status::Busy, Status::Meeting].into_iter().enumerate() {
+        for (i, status) in [Status::Free, Status::Busy, Status::Meeting]
+            .into_iter()
+            .enumerate()
+        {
             if i > 0 {
                 spans.push(Span::raw("    "));
             }
             let is_active = status == app.active;
             let style = if is_active {
-                Style::default().fg(status.color()).bold().add_modifier(Modifier::REVERSED)
+                Style::default()
+                    .fg(status.color())
+                    .bold()
+                    .add_modifier(Modifier::REVERSED)
             } else {
                 Style::default().fg(status.color())
             };
-            spans.push(Span::styled(format!("[{}] {}", status.key(), status.label()), style));
+            spans.push(Span::styled(
+                format!("[{}] {}", status.key(), status.label()),
+                style,
+            ));
         }
         spans
     };
@@ -261,15 +244,10 @@ fn draw(f: &mut Frame, app: &App) {
         chunks[2],
     );
 
-    // Notice / firmware input
-    let fw_line = if app.firmware.editing {
-        format!("{}▌", app.firmware.path)
-    } else {
-        app.notice.clone()
-    };
+    // Notice
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            fw_line,
+            app.notice.as_str(),
             Style::default().fg(Color::DarkGray),
         )))
         .alignment(Alignment::Center),
@@ -277,27 +255,21 @@ fn draw(f: &mut Frame, app: &App) {
     );
 
     // Footer
-    let footer = if app.firmware.editing {
-        Line::from(Span::styled(
-            "enter: update    esc: cancel",
-            Style::default().fg(Color::DarkGray),
-        ))
-    } else {
-        Line::from(vec![
-            key_hint("f", "Free"),
-            Span::raw("  "),
-            key_hint("b", "Busy"),
-            Span::raw("  "),
-            key_hint("m", "Meeting"),
-            Span::raw(if app.device.is_some() { "   ·   " } else { "" }),
-            key_hint("r", "Reconnect"),
-            Span::raw("   ·   "),
-            key_hint("u", "Update"),
-            Span::raw("   ·   "),
-            key_hint("q", "Quit"),
-        ])
-    };
-    f.render_widget(Paragraph::new(footer).alignment(Alignment::Center), chunks[4]);
+    let footer = Line::from(vec![
+        key_hint("f", "Free"),
+        Span::raw("  "),
+        key_hint("b", "Busy"),
+        Span::raw("  "),
+        key_hint("m", "Meeting"),
+        Span::raw(if app.device.is_some() { "   ·   " } else { "" }),
+        key_hint("r", "Reconnect"),
+        Span::raw("   ·   "),
+        key_hint("q", "Quit"),
+    ]);
+    f.render_widget(
+        Paragraph::new(footer).alignment(Alignment::Center),
+        chunks[4],
+    );
 }
 
 fn key_hint(key: &str, label: &str) -> Span<'static> {
@@ -319,7 +291,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         active: Status::Free,
         pending: None,
         notice: "".into(),
-        firmware: FirmwareInput { editing: false, path: String::new() },
         quit: false,
     };
 
@@ -332,7 +303,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match event {
                 UiEvent::Found(device) => {
                     app.device = device;
-                    app.notice = if app.device.is_some() { "".into() } else { "not found".into() };
+                    app.notice = if app.device.is_some() {
+                        "".into()
+                    } else {
+                        "not found".into()
+                    };
                 }
                 UiEvent::StatusSent(res) => match res {
                     Ok(()) => {
@@ -345,15 +320,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.notice = e;
                     }
                 },
-                UiEvent::FirmwareDone(res) => {
-                    match res {
-                        Ok(()) => {
-                            app.notice = "updated".into();
-                            app.send(&cmd_tx, Command_::Find);
-                        }
-                        Err(e) => app.notice = e,
-                    }
-                }
             }
         }
 
@@ -372,33 +338,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn handle_key(app: &mut App, tx: &Sender<Command_>, code: KeyCode) {
-    if app.firmware.editing {
-        match code {
-            KeyCode::Esc => {
-                app.firmware.editing = false;
-                app.firmware.path.clear();
-            }
-            KeyCode::Enter => {
-                let path = PathBuf::from(app.firmware.path.trim());
-                if path.as_os_str().is_empty() {
-                    app.firmware.editing = false;
-                } else {
-                    app.send(tx, Command_::FlashFirmware(path));
-                    app.notice = "updating…".into();
-                    app.firmware.editing = false;
-                }
-            }
-            KeyCode::Backspace => {
-                app.firmware.path.pop();
-            }
-            KeyCode::Char(c) => {
-                app.firmware.path.push(c);
-            }
-            _ => {}
-        }
-        return;
-    }
-
     match code {
         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => app.quit = true,
         KeyCode::Char('f') | KeyCode::Char('1') => app.set_status(tx, Status::Free),
@@ -407,10 +346,6 @@ fn handle_key(app: &mut App, tx: &Sender<Command_>, code: KeyCode) {
         KeyCode::Char('r') | KeyCode::Char('R') => {
             app.send(tx, Command_::Find);
             app.notice = "searching…".into();
-        }
-        KeyCode::Char('u') | KeyCode::Char('U') => {
-            app.firmware.editing = true;
-            app.firmware.path.clear();
         }
         _ => {}
     }
