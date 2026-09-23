@@ -2,6 +2,10 @@
 
 Open-source ESP32-based alternative to Busy Tag, built for the Waveshare [ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm) (368×448 AMOLED). Switch your availability directly with the onboard button or control it from a computer over USB.
 
+## Demo
+
+https://github.com/user-attachments/assets/9c50b3d7-ad3b-48d7-b5e5-555797bc96bd
+
 ## Features
 
 - Shows the current status full-screen:
