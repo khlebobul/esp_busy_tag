@@ -67,6 +67,7 @@ fn open(port: &str) -> Result<Box<dyn serialport::SerialPort>, String> {
 
 fn request_info(port_name: &str) -> Option<Device> {
     let mut port = open(port_name).ok()?;
+    port.clear(serialport::ClearBuffer::Input).ok()?;
     port.write_all(b"{\"cmd\":\"info\"}\n").ok()?;
     let mut response = Vec::new();
     loop {

@@ -17,9 +17,9 @@ static lv_color_t bg_color_for_status(const char *status) {
 
 void display_init(const display_state_t *state) {
     lv_display_t *display = bsp_display_start();
+    bsp_display_lock(0);
     bsp_display_rotate(display, LV_DISPLAY_ROTATION_90);
     bsp_display_brightness_set(DISPLAY_BRIGHTNESS);
-    bsp_display_lock(0);
     lv_obj_t *screen = lv_screen_active();
     lv_obj_set_style_bg_color(screen, bg_color_for_status(state->status), 0);
     title = lv_label_create(screen); lv_obj_set_style_text_color(title, lv_color_white(), 0); lv_obj_set_style_text_font(title, &lv_font_orbitron_48, 0); lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
